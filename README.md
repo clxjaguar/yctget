@@ -12,7 +12,7 @@ Our datalogger is using a easy to build non-standard serial cable:
 ```
 [male 3.5mm stereo jack]              [female DE-9]
          Tip  ---- PC to datalogger ----- Pin 3
-		Ring  ---- Datalogger to PC ----- Pin 2
+        Ring  ---- Datalogger to PC ----- Pin 2
        Sleeve -------- Ground ----------- Pin 5
 
 
