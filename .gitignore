@@ -1,0 +1,5 @@
+*.o
+yctget
+yctget.exe
+*.txt
+*.dat
