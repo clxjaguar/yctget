@@ -31,7 +31,7 @@ unsigned int receive(serial &port, unsigned char *buf, size_t bufsize){
 		delay_ms(10);
 		n+= port.binreceive(buf+n, bufsize-n);
 		tries--;
-		if (!tries) { fprintf(stderr, "Warning: Timeout reading serial port...\n"); break; }
+		if (!tries) { fprintf(stderr, "\nWarning: Timeout reading serial port...\n"); break; }
 	}
 	return n;
 }
@@ -63,19 +63,20 @@ int main(int argc, char *argv[]) {
 	unsigned char buf[24];
 	unsigned int n, i, j;
 	double value;
+	char *portname = NULL;
 	FILE *fdout = NULL;
-	
-	fprintf(stderr, "YCTget (compilation date: %s)\n", __DATE__);
 
 	if (argc < 2) {
-		fprintf(stderr, "Usage: %s <serial interface>\n\n", argv[0]);
+		fprintf(stderr, "YCTget (build date: %s)\n", __DATE__);
+		fprintf(stderr, "Usage: %s <serial interface>\n", argv[0]);
 		return -1;
 	}
 
-	port1.open(argv[1], 9600);
+	portname = argv[1];
+	port1.open(portname, 9600);
 	if (!port1.isopened()) {
-		fprintf(stderr, "Unable to open RS232 interface - ");
 		perror(argv[1]);
+		fprintf(stderr, "Unable to open the serial port!\n");
 		return -2;
 	}
 
@@ -90,11 +91,28 @@ int main(int argc, char *argv[]) {
 
 		n = receive(port1, buf, 1);
 		if (n) { break; }
-		fprintf(stderr, "Error: Data link not detected.\n");
 	}
-	if (!n) { return -1; }
+	if (!n) {
+		fprintf(stderr, "Error: Data link not detected.\n\n");
+		fprintf(stderr, "Please check:\n");
+		fprintf(stderr, "    * Datalogger is powered on (no need to select any \"RS232 mode\"),\n");
+		fprintf(stderr, "    * Datalogger must have some recorded data or it wouldn't reply,\n");
+#ifndef WIN32
+		fprintf(stderr, "    * No other program (including virtual machines) should have opened the same port,\n");
+#endif
+		fprintf(stderr, "    * The correct data cable of is plugged to the datalogger and PC,\n");
+		fprintf(stderr, "    * %s is really the right serial interface.\n\n", portname);
+
+		return -1;
+	}
 	if (buf[0] != 0xAA) {
 		fprintf(stderr, "Error: Bad 0xAA header !\n");
+		fprintf(stderr, "Please check:\n");
+		fprintf(stderr, "    * The datalogger isn't in \"rs232\" mode,");
+		fprintf(stderr, "    * Transmission request wasn't already made and datalogger isn't already transferring data (try to power off),");
+#ifndef WIN32
+		fprintf(stderr, "    * No other program (including virtual machines) should have opened the same port (%s),\n", portname);
+#endif
 		return -1;
 	}
 
@@ -112,7 +130,7 @@ int main(int argc, char *argv[]) {
 		}
 		n+= receive(port1, buf+n, 12);
 		if (n != 24) {
-			fprintf(stderr, "Header incomplete... Exiting...\n");
+			fprintf(stderr, "Error: Header incomplete! Exiting...\n"); // TODO
 			hexdump(stderr, buf, n); fprintf(stderr, "\n");
 			return -1;
 		}
