@@ -22,25 +22,47 @@
 #define delay_ms(t) usleep(1000*t);
 #endif
 
-unsigned int receive(serial &port, unsigned char *buf, size_t bufsize){
-	unsigned int tries = 100;
-	unsigned int n;
-	n = port.binreceive(buf, bufsize);
-
-	while(n<bufsize){
-		delay_ms(10);
-		n+= port.binreceive(buf+n, bufsize-n);
-		tries--;
-		if (!tries) { fprintf(stderr, "\nWarning: Timeout reading serial port...\n"); break; }
-	}
-	return n;
-}
+FILE *fhexdump_record = NULL;
+FILE *fhexdump_recall = NULL;
 
 void hexdump(FILE *fd, unsigned char *buf, unsigned int n){
 	unsigned int i;
 	for (i=0; i<n; i++){
 		fprintf(fd, "%02X", buf[i]);
 	}
+	fprintf(fd, "\n");
+}
+
+unsigned int receive(serial &port, unsigned char *buf, size_t bufsize){
+	unsigned int tries = 100;
+	unsigned int n;
+
+	if (!fhexdump_recall) {
+		n = port.binreceive(buf, bufsize);
+
+		while(n<bufsize){
+			delay_ms(10);
+			n+= port.binreceive(buf+n, bufsize-n);
+			tries--;
+			if (!tries) { fprintf(stderr, "\nWarning: Timeout reading serial port...\n"); break; }
+		}
+	}
+	else {
+		unsigned int val;
+		n = 0;
+		while(fscanf(fhexdump_recall, "%2X", &val)) {
+			if (feof(fhexdump_recall)) {
+				break;
+			}
+			buf[n++] = (unsigned char)val;
+			if (n >= bufsize) { break; }
+		}
+	}
+
+	if (fhexdump_record) {
+		hexdump(fhexdump_record, buf, n);
+	}
+	return n;
 }
 
 time_t import_hex_timedate(unsigned char yy, unsigned char mo, unsigned char dd, unsigned char hh, unsigned char mm, unsigned char ss){
@@ -67,54 +89,95 @@ int main(int argc, char *argv[]) {
 	char *portname = NULL;
 	FILE *fdout = NULL;
 
-	if (argc < 2) {
+	i = 1;
+	while(argv[i]) {
+		if (argv[i][0] == '-') {
+			if (!strcmp(argv[i], "--savedump") && argv[i+1]) {
+				if (!(fhexdump_record = fopen(argv[++i], "w"))) {
+					perror(argv[i]); return -1;
+				}
+			}
+			else if (!strcmp(argv[i], "--readdump") && argv[i+1]) {
+				if (portname) {
+					fprintf(stderr, "%s: too much argument '%s'\n", argv[0], argv[i]); return -1;
+				}
+				if (!(fhexdump_recall = fopen(argv[++i], "r"))) {
+					perror(argv[i]); return -1;
+				}
+			}
+			else {
+				fprintf(stderr, "%s: invalid argument '%s'\n", argv[0], argv[i]);
+				return -1;
+			}
+		}
+		else {
+			if (portname || fhexdump_recall) {
+				fprintf(stderr, "%s: too much argument '%s'\n", argv[0], argv[i]);
+				return -1;
+			}
+			portname = argv[i];
+		}
+		i++;
+	}
+
+	if (!fhexdump_recall && !portname) {
 		fprintf(stderr, "YCTget (build date: %s)\n", __DATE__);
 		fprintf(stderr, "Usage: %s <serial interface>\n", argv[0]);
+		fprintf(stderr, "Usage: %s [--savedump <dumpfile>] <serial interface>\n", argv[0]);
+		fprintf(stderr, "       %s [--readdump <dumpfile>]\n", argv[0]);
 		return -1;
 	}
 
-	portname = argv[1];
-	port1.open(portname, 9600);
-	if (!port1.isopened()) {
-		perror(argv[1]);
-		fprintf(stderr, "Unable to open the serial port!\n");
-		return -2;
+	if (!fhexdump_recall) {
+		port1.open(portname, 9600);
+		if (!port1.isopened()) {
+			perror(argv[1]);
+			fprintf(stderr, "Unable to open the serial port!\n");
+			return -2;
+		}
+
+		for(i=0; i<3; i++){
+			if (i) { fprintf(stderr, "Retrying...\n"); }
+			port1.clear_buffer();
+			port1.send(0xAA);
+			delay_ms(5);
+			port1.send(0xC5);
+			port1.send(0x10);
+			port1.send(0xAB);
+
+			n = receive(port1, buf, 1);
+			if (n) { break; }
+		}
+		if (!n) {
+			fprintf(stderr, "Error: Data link not detected.\n\n");
+			fprintf(stderr, "Please check:\n");
+			fprintf(stderr, "    * Datalogger is powered on (no need to select any \"RS232 mode\"),\n");
+			fprintf(stderr, "    * Datalogger must have some recorded data or it wouldn't reply,\n");
+	#ifndef WIN32
+			fprintf(stderr, "    * No other program (including virtual machines) should have opened the same port,\n");
+	#endif
+			fprintf(stderr, "    * The correct data cable of is plugged to the datalogger and PC,\n");
+			fprintf(stderr, "    * %s is really the right serial interface.\n\n", portname);
+
+			return -1;
+		}
+		if (buf[0] != 0xAA) {
+			fprintf(stderr, "Error: Bad 0xAA header !\n");
+			fprintf(stderr, "Please check:\n");
+			fprintf(stderr, "    * The datalogger isn't in \"rs232\" mode,");
+			fprintf(stderr, "    * Transmission request wasn't already made and datalogger isn't already transferring data (try to power off),");
+	#ifndef WIN32
+			fprintf(stderr, "    * No other program (including virtual machines) should have opened the same port (%s),\n", portname);
+	#endif
+			return -1;
+		}
 	}
-
-	for(i=0; i<3; i++){
-		if (i) { fprintf(stderr, "Retrying...\n"); }
-		port1.clear_buffer();
-		port1.send(0xAA);
-		delay_ms(5);
-		port1.send(0xC5);
-		port1.send(0x10);
-		port1.send(0xAB);
-
+	else {
 		n = receive(port1, buf, 1);
-		if (n) { break; }
-	}
-	if (!n) {
-		fprintf(stderr, "Error: Data link not detected.\n\n");
-		fprintf(stderr, "Please check:\n");
-		fprintf(stderr, "    * Datalogger is powered on (no need to select any \"RS232 mode\"),\n");
-		fprintf(stderr, "    * Datalogger must have some recorded data or it wouldn't reply,\n");
-#ifndef WIN32
-		fprintf(stderr, "    * No other program (including virtual machines) should have opened the same port,\n");
-#endif
-		fprintf(stderr, "    * The correct data cable of is plugged to the datalogger and PC,\n");
-		fprintf(stderr, "    * %s is really the right serial interface.\n\n", portname);
-
-		return -1;
-	}
-	if (buf[0] != 0xAA) {
-		fprintf(stderr, "Error: Bad 0xAA header !\n");
-		fprintf(stderr, "Please check:\n");
-		fprintf(stderr, "    * The datalogger isn't in \"rs232\" mode,");
-		fprintf(stderr, "    * Transmission request wasn't already made and datalogger isn't already transferring data (try to power off),");
-#ifndef WIN32
-		fprintf(stderr, "    * No other program (including virtual machines) should have opened the same port (%s),\n", portname);
-#endif
-		return -1;
+		if (!n || (buf[0] != 0xaa)) {
+			fprintf(stderr, "No magic 0xAA byte present in file. Exiting...\n");
+			return -1;
+		}
 	}
 
 	unsigned int time_interval, mesurements_nbr, channels;
@@ -126,13 +189,13 @@ int main(int argc, char *argv[]) {
 		if (buf[0]==0xAB && buf[1]==0xAB && buf[2] ==0xAB &&buf[3]==0xAB &&
 		    buf[4]==0xAB && buf[5]==0xAB && buf[6] ==0xAB &&buf[7]==0xAB &&
 			buf[8]==0xAB && buf[9]==0xAB && buf[10]==0xAB &&buf[11]==0xAB){
-			fprintf(stderr, "End of Transmission !\n");
+			fprintf(stderr, "End of data!\n");
 			break;
 		}
 		n+= receive(port1, buf+n, 12);
 		if (n != 24) {
-			fprintf(stderr, "Error: Header incomplete! Exiting...\n"); // TODO
-			hexdump(stderr, buf, n); fprintf(stderr, "\n");
+			fprintf(stderr, "Error: Header incomplete! Exiting...\n");
+			hexdump(stderr, buf, n);
 			return -1;
 		}
 		//buf[0]      & 0x0F // thermocouple 1(?) type
@@ -183,8 +246,8 @@ int main(int argc, char *argv[]) {
 		const unsigned char bytes_orders[4][3] = {
 			{1,  0,  2}, // channel 1
 			{5,  4,  3}, // channel 2
-			{8,  7,  6}, // channel 3 (untested)
-			{11, 10, 9}  // channel 4 (untested)
+			{8,  7,  6}, // channel 3 (untested, maybe in wrong order)
+			{11, 10, 9}  // channel 4 (untested, maybe in wrong order)
 		};
 
 		for(i=0;i<mesurements_nbr;i++){
@@ -192,7 +255,6 @@ int main(int argc, char *argv[]) {
 			strftime(strftimebuf, sizeof(strftimebuf), "%Y-%m-%d %H:%M:%S", localtime(&tmp_time));
 
 			n = receive(port1, buf, 12);
-			//hexdump(stdout, buf, n); printf(stderr, "\n"); // uncomment for the debugging
 			if (!fdout) { fprintf(stderr, "\rSkipping %u/%u...", i+1, mesurements_nbr); continue; }
 			fprintf(stderr, "\rReceiving %u/%u - %s", i+1, mesurements_nbr, strftimebuf);
 			fprintf(fdout, "%s", strftimebuf);
@@ -212,5 +274,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "\n\n");
 	}
 
+	if (fhexdump_record) { fclose(fhexdump_record); }
+	if (fhexdump_recall) { fclose(fhexdump_recall); }
 	return 0;
 }
