@@ -160,8 +160,6 @@ int main(int argc, char *argv[]) {
 		if (!fdout) { perror(strftimebuf); }
 		else {
 			fprintf(stderr, "Writing to file : %s\n", strftimebuf);
-			hexdump(fdout, buf, n);
-			fprintf(fdout, "\n");
 			strftime(strftimebuf, sizeof(strftimebuf), "%Y-%m-%d %H:%M:%S", localtime(&start_time));
 			fprintf(fdout, "Start time :            %s\n", strftimebuf);
 			strftime(strftimebuf, sizeof(strftimebuf), "%Y-%m-%d %H:%M:%S", localtime(&end_time));
