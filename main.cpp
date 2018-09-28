@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
 			return -1;
 		}
 
-		strftime(strftimebuf, sizeof(strftimebuf), "%Y%m%d-%H%M%S.csv", localtime(&start_time));
+		strftime(strftimebuf, sizeof(strftimebuf), "%Y%m%d-%H%M%S.dat", localtime(&start_time));
 		fdout = fopen(strftimebuf, "w");
 		if (!fdout) { perror(strftimebuf); }
 		else {
