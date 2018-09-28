@@ -1,6 +1,7 @@
 *.o
 yctget
-yctget.exe
+*.exe
 *.txt
 *.csv
 *.dat
+*.hex
