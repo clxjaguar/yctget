@@ -53,6 +53,7 @@ time_t import_hex_timedate(unsigned char yy, unsigned char mo, unsigned char dd,
 	timestruct.tm_hour = (((hh>>4)) & 0x0F)*10 + (hh & 0x0F);
 	timestruct.tm_min  = (((mm>>4)) & 0x0F)*10 + (mm & 0x0F);
 	timestruct.tm_sec  = (((ss>>4)) & 0x0F)*10 + (ss & 0x0F);
+	timestruct.tm_isdst = -1;
 	result = mktime(&timestruct);
 	if (result<0) { fprintf(stderr, "Warning: Incorrect date/time : %02x-%02x-%02x %02x:%02x:%02x !\n", yy, mo, dd, hh, mm, ss); }
 	return result;
