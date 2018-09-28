@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "    * No other program (including virtual machines) should have opened the same port,\n");
 	#endif
 			fprintf(stderr, "    * The correct data cable of is plugged to the datalogger and PC,\n");
-			fprintf(stderr, "    * %s is really the right serial interface.\n\n", portname);
+			fprintf(stderr, "    * %s is the correct serial interface.\n\n", portname);
 
 			return -1;
 		}
